@@ -5,14 +5,41 @@
 
 const fs = require("fs");
 
-let total = 0;
-let count = 0;
+function parseAmount(value) {
+  // Amounts may be a number or a string with thousands separators.
+  if (typeof value === "number") return value;
+  return parseFloat(String(value).replace(/,/g, "").trim());
+}
 
 const lines = fs.readFileSync("payments.jsonl", "utf8").split("\n").filter((l) => l.length > 0);
+const latest = new Map();
+
 for (const line of lines) {
-  const event = JSON.parse(line);
+  let event;
+  try {
+    event = JSON.parse(line);
+  } catch (e) {
+    // Ignore lines that can't be read.
+    continue;
+  }
+  if (!event || typeof event !== "object" || !event.txn_id) {
+    // Ignore events without a txn_id.
+    continue;
+  }
+
+  const txn_id = event.txn_id;
+  const ts = event.ts || "";
+  // Only the latest attempt for each txn_id counts.
+  if (!latest.has(txn_id) || ts >= latest.get(txn_id).ts) {
+    latest.set(txn_id, event);
+  }
+}
+
+let total = 0;
+let count = 0;
+for (const event of latest.values()) {
   if (event.status === "success") {
-    total += Number(event.amount);
+    total += parseAmount(event.amount);
     count += 1;
   }
 }
